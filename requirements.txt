@@ -1,0 +1,6 @@
+requests
+requests_oauthlib
+websockets
+Flask
+pyOpenSSL
+pytz
