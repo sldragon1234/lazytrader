@@ -37,6 +37,7 @@ To allow a person to make micro trades between the buy and sell ranges of a stoc
 
 # User Configuration Terminology
 | Term | Definition |
+| ---- | ---------- |
 | broker | The company you use to buy and sell stocks with |
 | delay_market_open | How long after the market open before starting to trade |
 | sleep_timer | How long to wait between trades |
