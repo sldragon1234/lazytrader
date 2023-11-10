@@ -91,10 +91,11 @@ To allow a person to make micro trades between the buy and sell ranges of a stoc
 
 # Installation Steps
 1. Add the lazytrader user with a home directory with bash
-2. Download lazytrader from GitHub
-3. Create user_config.json file in the lazytrader home directory
-4. Add the cronjobs from the CRONTAB file
-5. Test the trader, stats, and compare_gap scripts
+1. Switch to the lazytrader user
+1. Download lazytrader from GitHub
+1. Create user_config.json file in the lazytrader home directory
+1. Add the cronjobs from the CRONTAB file
+1. Test the trader, stats, and compare_gap scripts
 
 # Installation Example
 ```
