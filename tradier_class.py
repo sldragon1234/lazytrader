@@ -12,7 +12,8 @@ import datetime
 from pprint import pprint
 
 # Custom Modules
-sys.path.append(os.path.expanduser('~') + "/lazytrader")
+#sys.path.append(os.path.expanduser('~') + "/lazytrader")
+sys.path.append(os.path.expanduser('~') + "/lazytrader-unreleased")
 
 class TRADIER_CLASS:
   # Variables
@@ -466,11 +467,11 @@ class TRADIER_CLASS:
 
     # Date Variables
     cur_date = self.get_data()
-    minutes_back = days_back * 1440
     if days_back == 0:
       midnight = cur_date.strftime('%Y-%m-%dT00:00:00')
       start_date = self.get_data(specific_date=midnight)
     else:
+      minutes_back = days_back * 1440
       start_date = (cur_date - self.get_data(mins_back=minutes_back))
 
     if days_back > 0:
@@ -490,6 +491,9 @@ class TRADIER_CLASS:
       # Parse the transactions
       for each in gainloss:
         cur_symbol = each["symbol"]
+        if cur_symbol not in data:
+          data[cur_symbol] = {}
+
         open_date = each["open_date"][:-5]
         open_date = self.get_data(specific_date=open_date)
         close_date = each["close_date"][:-5]
@@ -498,42 +502,38 @@ class TRADIER_CLASS:
         num_days = abs((start_date - close_date).days)
 
         if num_days <= days_back:
-          profit = each["gain_loss"]
           try:
             data[cur_symbol]["success_counter"] += 1
             data[cur_symbol]["total_trans_counter"] += 1
-            data[cur_symbol]["profit"] += profit
             data[cur_symbol]["total_trans_time"] += trans_time
           except KeyError:
             data[cur_symbol] = {}
             data[cur_symbol]["success_counter"] = 1
             data[cur_symbol]["total_trans_counter"] = 1
-            data[cur_symbol]["profit"] = profit
             data[cur_symbol]["total_trans_time"] = trans_time
 
     # Get current orders
     orders = self.get_orders()
     for cur_symbol in orders:
+      if cur_symbol not in data:
+        data[cur_symbol] = {}
       for entry in orders[cur_symbol]:
+        try:
+          data[cur_symbol]["total_trans_counter"] += 1
+        except KeyError:
+          data[cur_symbol]["total_trans_counter"] = 1
+
         if entry["sell_status"] == "filled":
           cur_profit = entry["sell_amount"] - entry["buy_amount"]
           trans_time = (entry["sell_date"] - entry["buy_date"]).total_seconds()
 
           try:
             data[cur_symbol]["success_counter"] += 1
-            data[cur_symbol]["total_trans_counter"] += 1
-            data[cur_symbol]["profit"] += cur_profit
             data[cur_symbol]["total_trans_time"] += trans_time
-            data[cur_symbol]["total_order_time"] += trans_time
-            data[cur_symbol]["old_order_counter"] = 0
           except KeyError:
             data[cur_symbol] = {}
             data[cur_symbol]["success_counter"] = 1
-            data[cur_symbol]["total_trans_counter"] = 1
-            data[cur_symbol]["profit"] = cur_profit
             data[cur_symbol]["total_trans_time"] = trans_time
-            data[cur_symbol]["total_order_time"] = trans_time
-            data[cur_symbol]["old_order_counter"] = 0
 
     # Get Open Positions     
     url = "%s/v1/accounts/%s/positions" % (self.base_url, self.account_id)
@@ -547,7 +547,7 @@ class TRADIER_CLASS:
     else:
       positions = results["positions"]["position"]
 
-    data[cur_symbol]["total_order_time"] = 0
+    
     for each in positions:
       cur_symbol = each["symbol"]
       acquired = each["date_acquired"][:-5]
@@ -559,6 +559,19 @@ class TRADIER_CLASS:
         except KeyError:
           data[cur_symbol]["old_order_counter"] = 1
         data[cur_symbol]["total_trans_counter"] += 1
+
+    # Additional Calculations
+    for cur_symbol in data:
+      profit_amount = self.file_data[self.broker]["stocks"][cur_symbol]["profit"]
+      total_trans_count = data[cur_symbol]["total_trans_counter"]
+      total_success = data[cur_symbol]["success_counter"]
+      data[cur_symbol]["failure_count"] = total_trans_count - total_success
+      data[cur_symbol]["success_percentage"] = round(float((total_success / total_trans_count) * 100), 2)
+      data[cur_symbol]["average_trans_time"] = round(float(trans_time) / int(total_trans_count), 2)
+      data[cur_symbol]["profit"] = round(float(total_success * profit_amount), 2)
+
+      # Remove placeholders
+      del data[cur_symbol]["total_trans_time"]
     return data
 
   # Get the date
@@ -601,11 +614,12 @@ if __name__ == "__main__":
 
   # Variables
   symbol_group = ["AAPL"]
-  symbol = "APPL"
+  #symbol = "TSLA"
+  symbol = "AAPL"
   buy_price = 10
   sell_price = 15
   qty = 1
-  user_config = os.path.expanduser('~') + "/lazytrader/user_config.json"
+  user_config = os.path.expanduser('~') + "/lazytrader-unreleased/user_config.json"
 
   # Enable logging
   log_level = logging.DEBUG
