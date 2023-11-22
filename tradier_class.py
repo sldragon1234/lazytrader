@@ -560,18 +560,23 @@ class TRADIER_CLASS:
           data[cur_symbol]["old_order_counter"] = 1
         data[cur_symbol]["total_trans_counter"] += 1
 
+
     # Additional Calculations
     for cur_symbol in data:
-      profit_amount = self.file_data[self.broker]["stocks"][cur_symbol]["profit"]
-      total_trans_count = data[cur_symbol]["total_trans_counter"]
-      total_success = data[cur_symbol]["success_counter"]
-      data[cur_symbol]["failure_count"] = total_trans_count - total_success
-      data[cur_symbol]["success_percentage"] = round(float((total_success / total_trans_count) * 100), 2)
-      data[cur_symbol]["average_trans_time"] = round(float(trans_time) / int(total_trans_count), 2)
-      data[cur_symbol]["profit"] = round(float(total_success * profit_amount), 2)
+      try:
+        profit_amount = self.file_data[self.broker]["stocks"][cur_symbol]["profit"]
+        total_trans_count = data[cur_symbol]["total_trans_counter"]
+        total_success = data[cur_symbol]["success_counter"]
+        data[cur_symbol]["failure_count"] = total_trans_count - total_success
+        data[cur_symbol]["success_percentage"] = round(float((total_success / total_trans_count) * 100), 2)
+        data[cur_symbol]["average_trans_time"] = round(float(trans_time) / int(total_trans_count), 2)
+        data[cur_symbol]["profit"] = round(float(total_success * profit_amount), 2)
 
-      # Remove placeholders
-      del data[cur_symbol]["total_trans_time"]
+        # Remove placeholders
+        del data[cur_symbol]["total_trans_time"]
+        del data[cur_symbol]["total_trans_counter"]
+      except KeyError:
+        logging.info("%s had not transaction today" % cur_symbol)
     return data
 
   # Get the date

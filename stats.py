@@ -10,8 +10,9 @@ import smtplib
 import datetime
 import argparse
 from pprint import pprint
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+from email.message import EmailMessage
+from email.headerregistry import Address
+from email.utils import make_msgid
 
 # Custom Modules
 sys.path.append(os.path.expanduser('~') + "/lazytrader")
@@ -149,24 +150,38 @@ if __name__ == "__main__":
   subject += ", ".join(days_back_list)
 
   # Generate Email Message
-  email_msg = MIMEMultipart('alternative')
-  email_msg['Subject'] = subject
-  email_msg['From'] = email
-  email_msg['To'] = email
-  use_msg = MIMEText(use_msg, 'html')
-  email_msg.attach(use_msg)
+  try:
+    raw_email = email.split('@')
+    user = raw_email[0]
+    domain = raw_email[1]
+  except:
+    logging.error("Email provide is malformed: %s" % email)
+    sys.exit()
+  msg = EmailMessage()
+  msg['Subject'] = subject
+  msg['From'] = Address(email, user, domain)
+  msg['To'] = Address(email, user, domain)
+  msg.set_content("Yo")
+
+  # Add the html version.  This converts the message into a multipart/alternative
+  # container, with the original text message as the first part and the new html
+  # message as the second part.
+  asparagus_cid = make_msgid()
+  msg.add_alternative(use_msg.format(asparagus_cid=asparagus_cid[1:-1]), subtype='html')
+  # note that we needed to peel the <> off the msgid for use in the html.
 
   # Send Email
   if email:
-    logging.debug("Sending email to %s" % email_msg['To'])
-    logging.debug("To: %s" % email_msg['To'])
-    logging.debug("From: %s" % email_msg['From'])
-    logging.debug("Subject: %s" % email_msg['Subject'])
-    logging.debug("Body: %s" % email_msg.as_string)
+    logging.debug("Sending email to %s" % msg['To'])
+    logging.debug("To: %s" % msg['To'])
+    logging.debug("From: %s" % msg['From'])
+    logging.debug("Subject: %s" % msg['Subject'])
+    logging.debug("Body: %s" % msg.as_string)
 
-    s = smtplib.SMTP(email_server)
-    s.sendmail(from_address, email, email_msg.as_string())
-    logging.info("Email Sent")
-    s.quit()
+    # Send the message via local SMTP server.
+    with smtplib.SMTP('localhost') as s:
+      s.send_message(msg)
+      s.quit() 
+      logging.info("Email Sent")
   else:
     logging.error("No Email Address Provided")
