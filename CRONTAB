@@ -1,14 +1,11 @@
-# LazyTrader - Start Stream and Trader
-0 7 * * 1-5 /home/lazytrader/lazytrader/trader.py -v -f /home/lazytrader/lazytrader/trade.out > /dev/null 2>&1
+# LazyTrader - Start Trader
+45 8 * * 1-5 /home/lazytrader/lazytrader/trader.py -v > /home/lazytrader/lazytrader/trade.out 2>&1
+
+# LazyTrader - Start Stream
+0 8 * * 1-5 /home/lazytrader/lazytrader/tradestation_stream.py > /dev/null 2>&1
 
 # LazyTrader - Stop Stream and Trader
-0 17 * * 1-5 sudo pkill -kill python3 > /dev/null 2>&1
+30 14 * * 1-5 sudo pkill -kill python3 > /dev/null 2>&1
 
 # LazyTrader - Email Today Summary
-0 17 * * 1-5 /home/lazytrader/lazytrader/stats.py -D 0 -e <Email Address>
-
-# LazyTrader - Email Monthly Summary
-0 17 1 * 1-5 /home/lazytrader/lazytrader/stats.py -D 30 -e <Email Address>
-
-# LazyTrader - Email Yearly Summary
-0 17 1 1 * /home/lazytrader/lazytrader/stats.py -D 365 -e <Email Address>
+2 17 * * 1-5 /home/lazytrader/lazytrader/stats.py -D 0 -e (EMAil Address) > /tmp/daily-unreleased.out 2>&1

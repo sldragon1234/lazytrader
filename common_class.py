@@ -28,3 +28,18 @@ class COMMON:
         each = each.replace('.py', '')
         avail_class.append(each)
     return avail_class
+
+  # General read a json file
+  def read_json(self, file=None):
+    with open(file, "r") as h:
+      try:
+        data = json.load(h)
+      except json.decoder.JSONDecodeError:
+        data = {}
+    return data
+
+  # General write a json file
+  def write_json(self, data, file=None):
+    with open(file, "w+") as h:
+      h.write(json.dumps(data))
+
