@@ -527,12 +527,14 @@ class TRADESTATION_CLASS:
     status_code = res.status_code
     if status_code == 200:
       results = res.json()
+      logging.debug(results)
     else:
+      logging.error("URL Used: %s" % url)
       logging.error("Placing Order for %s for %s")
       logging.error("Got the status code of %s" % status_code)
       logging.error(res.text)
+      sys.exit("%s - Maybe Try Reducing the Number of Days" % res.text)
 
-    logging.debug(results)
 
     for each in results["Bars"]:
       cur_open = float(each["Open"])
@@ -633,6 +635,44 @@ class TRADESTATION_CLASS:
           logging.error("Have a sell order without a buy order")
           logging.error(json.dumps(each, indent=2))
 
+    # Get Account Balance
+    url = self.base_url + "/brokerage/accounts/%s/balances" % self.account_id
+    logging.debug("Send Broker %s" % url)
+    res = requests.get(url, headers=self.headers)
+    status_code = res.status_code
+    if status_code == 200:
+      results = res.json()
+    else:
+      logging.error("Getting Account Balance")
+      logging.error("Got the status code of %s" % status_code)
+      logging.error(res.text)
+
+    data["Summary"] = {}
+    data["Summary"]["Available_Funds"] = round(float(results["Balances"][0]["CashBalance"]), 2)
+    data["Summary"]["In_Market"] = round(float(results["Balances"][0]["MarketValue"]), 2)
+    data["Summary"]["Total Account Balance"] = round(float(results["Balances"][0]["Equity"]),2)
+
+    # Get Current Positions
+    url = self.base_url + "/brokerage/accounts/%s/positions" % self.account_id
+    logging.debug("Send Broker %s" % url)
+    res = requests.get(url, headers=self.headers)
+    status_code = res.status_code
+    if status_code == 200:
+      results = res.json()
+    else:
+      logging.error("Getting Open Positions")
+      logging.error("Got the status code of %s" % status_code)
+      logging.error(res.text)
+
+    logging.debug(json.dumps(results, indent=2))
+    if "Positions" in results:
+      for each in results["Positions"]:
+        try:
+          data["Current_Positions"][each["Symbol"]] = each["Quantity"]
+        except KeyError:
+          data["Current_Positions"] = {}
+          data["Current_Positions"][each["Symbol"]] = each["Quantity"]
+
     logging.debug(json.dumps(group_array, indent=2))
     logging.info("Calculating results")    
 
@@ -675,7 +715,13 @@ class TRADESTATION_CLASS:
 
       # Handle transaction times
       open_time = self.get_date(specific_date=each_group["open_time"])
-      close_time = self.get_date(specific_date=each_group["close_time"])
+      try:
+        close_time = self.get_date(specific_date=each_group["close_time"])
+      except KeyError:
+        # ???? Need to re-learn code to see why this is happening
+        logging.error("Somehow I have an open transaction, believing it is closed")
+        logging.debug(each_group)
+        continue
       time_diff = (close_time - open_time).total_seconds()
       try:
         data[cur_symbol]["total_trans_sec"] += time_diff
@@ -690,26 +736,26 @@ class TRADESTATION_CLASS:
       # Debugging
       logging.info("Reviewing Order: %s, Symbol: %s, Status: %s, Buy Price: %s, Sell Price: %s, Qty: %s, Profit: %s" % (order_id, cur_symbol, each_group["sell_status"], each_group["buy_price"], each_group["sell_price"], each_group["buy_qty"], data[cur_symbol]["profit"]))
 
-    # Get Current Positions
-    url = self.base_url + "/brokerage/accounts/%s/positions" % self.account_id
+    # Get Account Balance
+    url = self.base_url + "/brokerage/accounts/%s/balances" % self.account_id
     logging.debug("Send Broker %s" % url)
     res = requests.get(url, headers=self.headers)
     status_code = res.status_code
     if status_code == 200:
       results = res.json()
     else:
-      logging.error("Getting Open Positions")
+      logging.error("Getting Account Balance")
       logging.error("Got the status code of %s" % status_code)
-      logging.error(res.text)
+      logging.error(res.text)    
 
-    logging.debug(json.dumps(results, indent=2))
-    if "Positions" in results:
-      for each in results["Positions"]:
+    # Add the total profit
+    for sym, each in data.items():
+      if "profit" in each:
         try:
-          data["Current_Positions"][each["Symbol"]] = each["Quantity"]
+          data["Summary"]["Total_Profit"] += each["profit"]
         except KeyError:
-          data["Current_Positions"] = {}
-          data["Current_Positions"][each["Symbol"]] = each["Quantity"]
+          data["Summary"]["Total_Profit"] = each["profit"]
+    data["Summary"]["Total_Profit"] = round(float(data["Summary"]["Total_Profit"]), 2)
 
     logging.debug(json.dumps(data, indent=2))
     return data
