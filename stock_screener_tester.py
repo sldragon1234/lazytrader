@@ -8,14 +8,10 @@ import time
 import json
 import pytz
 import logging
-import smtplib
 import requests
 import datetime
 import argparse
 from pprint import pprint
-from email.message import EmailMessage
-from email.headerregistry import Address
-from email.utils import make_msgid
 
 # Custom Modules
 sys.path.append(os.path.expanduser('~') + "/lazytrader")
@@ -29,17 +25,20 @@ if __name__ == "__main__":
   #log_level = logging.DEBUG
   log_format = "%(asctime)s: %(levelname)s: %(message)s - [%(filename)s: %(lineno)d]"
   cur_date = datetime.datetime.now()
+  end_date = datetime.datetime.strptime("%s 15:00:00" % cur_date.strftime("%Y-%m-%d"), "%Y-%m-%d %H:%M:%S")
+  cur_date = datetime.datetime.now()
+  output_file = "Screener_Test.json"
+  sleep_timer = 120
 
   # Email Variable
-  email_server = "localhost"
   subject = "Stock Screener Test Requests - %s " % cur_date.strftime("%Y-%m-%d")
-  from_address = ""
   msg = ""
   email = None
   email_bypass = False
 
   # Config Variables
   data = {}
+  delete_flag = True
   filename = None
   class_path = os.path.expanduser('~') + "/lazytrader-unreleased"
   user_config = os.path.expanduser('~') + "/lazytrader-unreleased/user_config.json"
@@ -55,6 +54,7 @@ if __name__ == "__main__":
   parser.add_argument('-u', '--user_config', help="User JSON Config File")
   parser.add_argument('-e', '--email_address', help="Email Address")
   parser.add_argument('-b', '--email_bypass', action='store_true', help="Bypass send email")
+  parser.add_argument('-D', '--no_delete', action='store_true', help="DO NOT Delete the old data")
 
   # Parse the argument
   args = parser.parse_args()
@@ -71,6 +71,8 @@ if __name__ == "__main__":
     email = args.email_address
   if args.email_bypass:
     email_bypass = True
+  if args.no_delete:
+    delete_flag = False
 
   # Initalize Logging
   if filename:
@@ -100,124 +102,116 @@ if __name__ == "__main__":
         broker = getattr(module, each.upper())
         broker = broker(file_data)
 
-  for screener_name, param in file_data[broker.broker]["screeners"].items():
+  # Delete old contents from Screener Test Output
+  if delete_flag:
+    with open(output_file, "w") as h:
+      json.dump({}, h)
 
-    # Get Screener stocks
-    stock_list = finviz.get_symbols(param)
+  #
+  # Main Loop
+  #
+  while True:
+    cur_date = datetime.datetime.now()
+    for screener_name, param in file_data[broker.broker]["screeners"].items():
 
-    if len(stock_list) == 0:
-      logging.error("No symbols found for %s" % screener_name)
-      continue
+      # Get Screener stocks
+      stock_list = finviz.get_symbols(param)
 
-    # Ensure we have working access token
-    broker.access_token = broker.handle_auth()
+      if len(stock_list) == 0:
+        logging.error("No symbols found for %s" % screener_name)
+        continue
 
-    # Get Account Balance
-    url = broker.base_url + "/marketdata/quotes/%s" % ",".join(stock_list)
-    logging.debug("Send Broker %s" % url)
-    res = requests.get(url, headers=broker.headers)
-    status_code = res.status_code
-    if status_code == 200:
-      results = res.json()
-    else:
-      logging.error("Got the status code of %s" % status_code)
-      logging.error(res.text)
+      # Ensure we have working access token
+      broker.access_token = broker.handle_auth()
 
-    # Verify we have data
-    if "Quotes" not in results:
-      logging.error("Unable to find quotes for %s" % screener_name)
+      # Get Account Balance
+      url = broker.base_url + "/marketdata/quotes/%s" % ",".join(stock_list)
+      logging.debug("Send Broker %s" % url)
+      res = requests.get(url, headers=broker.headers)
+      status_code = res.status_code
+      if status_code == 200:
+        results = res.json()
+      else:
+        logging.error("Got the status code of %s" % status_code)
+        logging.error(res.text)
 
-    # Parse Market Data per Screener
-    for each in results["Quotes"]:
-      symbol = each["Symbol"]
-      open_price = float(each["PreviousClose"])
-      close_price = float(each["Close"])
-      net_price = round(float(close_price - open_price), 2)
+      # Verify we have data
+      if "Quotes" not in results:
+        logging.error("Unable to find quotes for %s" % screener_name)
 
-      if screener_name not in data:
-        data[screener_name] = {}
+      # Get the current time
+      cur_time = datetime.datetime.now().strftime("%H:%M:%S")
 
-      data[screener_name][symbol] = {
-        "Open_Price": open_price,
-        "Close_Price": close_price,
-        "Net_Price": net_price
-      }
+      # Create the output file is missing
+      if not os.path.exists(output_file):
+        with open(output_file, "w") as h:
+          h.write("")
+      
+      # Get data from file
+      with open(output_file, "r") as h:
+        try:
+          data = json.load(h)
+        except json.decoder.JSONDecodeError:
+          data = {}
 
-#
-# E-Mail Section
-#
+      # Parse Market Data per Screener
+      for each in results["Quotes"]:
+        symbol = each["Symbol"]
+        open_price = float(each["PreviousClose"])
+        close_price = float(each["Close"])
+        net_price = round(float(close_price - open_price), 2)
+  
+        if screener_name not in data:
+          data[screener_name] = {}
+        if symbol not in data[screener_name]:
+          data[screener_name][symbol] = {}
 
-msg = "<table><tr>"
-msg += "<th>Screener</th>"
-msg += "<th>Symbol</th>"
-msg += "<th>Open Price</th>"
-msg += "<th>Close Price</th>"
-msg += "<th>Net Price</th>"
-msg += "</tr>"
+        data[screener_name][symbol][cur_time] = {
+          "Open_Price": open_price,
+          "Close_Price": close_price,
+          "Net_Price": net_price
+        }
 
-for name, cur_data in data.items():
-  #msg += "<tr>"
-  #msg += "<td>%s</td>" % name
-  for symbol, each_data in cur_data.items():
-    msg += "<tr>"
-    msg += "<td>%s</td>" % name
-    msg += "<td>%s</td>" % symbol
-    msg += "<td>%s</td>" % data[name][symbol]["Open_Price"]
-    msg += "<td>%s</td>" % data[name][symbol]["Close_Price"]
-    msg += "<td>%s</td>" % data[name][symbol]["Net_Price"]
+      # Write current data to file
+      with open(output_file, "w") as h:
+        json.dump(data, h)
+
+    if cur_date > end_date:
+      break
+    time.sleep(sleep_timer)
+
+  #
+  # E-Mail Section
+  #
+  msg = "<table><tr>"
+  msg += "<th>Screener</th>"
+  msg += "<th>Symbol</th>"
+  msg += "<th>Open Price</th>"
+  msg += "<th>Close Price</th>"
+  msg += "<th>Net Price</th>"
   msg += "</tr>"
-  msg += "<td>------------------</td>"
-  msg += "<td>------------------</td>"
-  msg += "<td>------------------</td>"
-  msg += "<td>------------------</td>"
-  msg += "<td>------------------</td>"
-  msg += "</tr>"
 
-msg += "</table><p>"
+  for name, cur_data in data.items():
+    #msg += "<tr>"
+    #msg += "<td>%s</td>" % name
+    for symbol, each_data in cur_data.items():
+      for cur_time, the_data in each_data.items():
+        msg += "<tr>"
+        msg += "<td>%s</td>" % name
+        msg += "<td>%s</td>" % symbol
+        msg += "<td>%s</td>" % data[name][symbol][cur_time]["Open_Price"]
+        msg += "<td>%s</td>" % data[name][symbol][cur_time]["Close_Price"]
+        msg += "<td>%s</td>" % data[name][symbol][cur_time]["Net_Price"]
+        msg += "</tr>"
+      msg += "<tr>"
+      msg += "<td>------------------</td>"
+      msg += "<td>------------------</td>"
+      msg += "<td>------------------</td>"
+      msg += "<td>------------------</td>"
+      msg += "<td>------------------</td>"
+      msg += "</tr>"
 
-if email_bypass:
-  print(msg) 
-  sys.exit()
+  msg += "</table><p>"
 
-use_msg = "<HTML><BODY>"
-use_msg += "<pre>%s</pre>" % msg
-use_msg += "</BODY></HTML>"
-
-# Generate Email Message
-try:
-  raw_email = email.split('@')
-  user = raw_email[0]
-  domain = raw_email[1]
-except:
-  logging.error("Email provide is malformed: %s" % email)
-  sys.exit()
-
-msg = EmailMessage()
-msg['Subject'] = subject
-msg['From'] = Address(email, user, domain)
-msg['To'] = Address(email, user, domain)
-msg.set_content("Yo")
-
-# Add the html version.  This converts the message into a multipart/alternative
-# container, with the original text message as the first part and the new html
-# message as the second part.
-asparagus_cid = make_msgid()
-msg.add_alternative(use_msg.format(asparagus_cid=asparagus_cid[1:-1]), subtype='html')
-# note that we needed to peel the <> off the msgid for use in the html.
-
-# Send Email
-if email:
-  logging.debug("Sending email to %s" % msg['To'])
-  logging.debug("To: %s" % msg['To'])
-  logging.debug("From: %s" % msg['From'])
-  logging.debug("Subject: %s" % msg['Subject'])
-  logging.debug("Body: %s" % msg.as_string)
-
-  # Send the message via local SMTP server.
-  with smtplib.SMTP('localhost') as s:
-    s.send_message(msg)
-    s.quit()
-    logging.info("Email Sent")
-else:
-  logging.error("No Email Address Provided")
+  common_class.send_email(msg, email, subject, email_bypass)
  
